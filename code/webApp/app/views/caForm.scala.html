@@ -1,0 +1,65 @@
+@(caForm: Form[ModelForms.CAParams], caPostUrl: Call)(implicit request: MessagesRequestHeader)
+
+@helper.form(caPostUrl, 'id -> "caForm") {
+    @*helper.CSRF.formField*@
+    <div class="form-group row">
+        <div class="col-lg-4">
+            @helper.inputText(caForm("baseCaseMonitorThreshold"),
+                '_label -> "Base case monitor threshold",
+                '_class -> "mx-2 my-2",
+                '_showConstraints -> false)
+
+            @helper.inputText(caForm("baseCaseWarningThreshold"),
+                '_label -> "Base case warning threshold",
+                '_class -> "mx-2 my-2",
+                '_showConstraints -> false)
+
+            @helper.inputText(caForm("baseCaseViolThreshold"),
+                '_label -> "Base case violation threshold",
+                '_class -> "mx-2 my-2",
+                '_showConstraints -> false)
+
+            @helper.inputText(caForm("contCaseMonitorThreshold"),
+                '_label -> "Cont. case monitor threshold",
+                '_class -> "mx-2 my-2",
+                '_showConstraints -> false)
+
+            @helper.inputText(caForm("contCaseWarningThreshold"),
+                '_label -> "Cont. case warning threshold",
+                '_class -> "mx-2 my-2",
+                '_showConstraints -> false)
+        </div>
+        <div class="col-lg-4">
+            @helper.inputText(caForm("contCaseViolThreshold"),
+                '_label -> "Cont. case violation threshold",
+                '_class -> "mx-2 my-2",
+                '_showConstraints -> false)
+
+        </div>
+        <div class="col-lg-4">
+            @helper.inputText(caForm("lowVoltageWarningThreshold"),
+                '_label -> "Low voltage warning threshold",
+                '_class -> "mx-2 my-2",
+                '_showConstraints -> false)
+
+            @helper.inputText(caForm("highVoltageWarningThreshold"),
+                '_label -> "High voltage warning threshold",
+                '_class -> "mx-2 my-2",
+                '_showConstraints -> false)
+
+            @helper.inputText(caForm("lowVoltageViolThreshold"),
+                '_label -> "Low voltage violation threshold",
+                '_class -> "mx-2 my-2",
+                '_showConstraints -> false)
+
+            @helper.inputText(caForm("highVoltageViolThreshold"),
+                '_label -> "High voltage violation threshold",
+                '_class -> "mx-3 my-2",
+                '_showConstraints -> false)
+            @helper.inputText(caForm("voltageFilter"),
+                '_label -> "Do not consider any contingency below this voltage (KV)",
+                '_class -> "mx-3 my-2",
+                '_showConstraints -> false)
+        </div>
+    </div>
+}

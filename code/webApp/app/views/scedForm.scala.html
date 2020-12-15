@@ -1,0 +1,143 @@
+@(scedForm: Form[ModelForms.ScedParams], scedPostUrl: Call)(implicit request: MessagesRequestHeader)
+
+@helper.form(scedPostUrl, 'id -> "scedForm") {
+    @*helper.CSRF.formField*@
+    <ul class="nav nav-tabs" role="tablist">
+        <li class="nav-item"><a href="#tab-options1" role="tab" data-toggle="tab" class="nav-link active">Options 1</a></li>
+        <li class="nav-item"><a href="#tab-options2" role="tab" data-toggle="tab" class="nav-link">Options 2</a></li>
+    </ul>
+    <div id="scedOptionFormTab" class="tab-content">
+        <div id="tab-options1" role="tabpanel" class="tab-pane active">
+            <div class="form-group row">
+                <div class="col-lg-6">
+                    @helper.checkbox(scedForm("monitorParams.simAllPotentialContingecy"),
+                        '_label -> "Simulate all potential contingencies",
+                        '_class -> "mx-2 my-2",
+                        '_showConstraints -> false)
+                    @helper.checkbox(scedForm("monitorParams.monintorALLBrc4SimAllPotentialCtgcy"),
+                        '_label -> "Monitor all branches",
+                        '_class -> "mx-2 my-2",
+                        '_showConstraints -> false)
+                    @helper.checkbox(scedForm("monitorParams.monitorAllBrcBaseCase"),
+                        '_label -> "Monitor all branches for basecase",
+                        '_class -> "mx-2 my-2",
+                        '_showConstraints -> false)
+                    @helper.checkbox(scedForm("monitorParams.monitorAllBrcCtgcyCase"),
+                        '_label -> "Monitor all branches for contingency case",
+                        '_class -> "mx-2 my-2",
+                        '_showConstraints -> false)
+                    @helper.checkbox(scedForm("monitorParams.usePkInit"),
+                        '_label -> "Use PkInit",
+                        '_class -> "mx-2 my-2",
+                        '_showConstraints -> false)
+                    @helper.checkbox(scedForm("monitorParams.usePkcInit"),
+                        '_label -> "Use PkcInit",
+                        '_class -> "mx-2 my-2",
+                        '_showConstraints -> false)
+                </div>
+                <div class="col-lg-6">
+                    @helper.inputText(scedForm("monitorParams.cutOffValue"),
+                        '_label -> "Cut off value",
+                        '_class -> "mx-2 my-2",
+                        '_showConstraints -> false)
+
+                    @helper.checkbox(scedForm("monitorParams.usePTDF"),
+                        '_label -> "Use PTDF",
+                        '_class -> "mx-2 my-2",
+                        '_showConstraints -> false)
+
+                    @helper.inputText(scedForm("monitorParams.timeED"),
+                        '_label -> "Economic dispatch period (minutes)",
+                        '_class -> "mx-2 my-2",
+                        '_showConstraints -> false)
+
+                    @helper.inputText(scedForm("monitorParams.timeSR"),
+                        '_label -> "Spinning reserve time frame (minutes)",
+                        '_class -> "mx-2 my-2",
+                        '_showConstraints -> false)
+
+                    @helper.inputText(scedForm("monitorParams.priceSR"),
+                        '_label -> "Price SR",
+                        '_class -> "mx-2 my-2",
+                        '_showConstraints -> false)
+
+                    @helper.checkbox(scedForm("monitorParams.isScedModelingLMP"),
+                        '_label -> "Modeling for LMP",
+                        '_class -> "mx-2 my-2",
+                        '_showConstraints -> false)
+                    @helper.inputText(scedForm("monitorParams.optionLoss"),
+                        '_label -> "Option Loss (0-3)",
+                        '_class -> "mx-2 my-2",
+                        '_showConstraints -> false)
+                </div>
+            </div>
+        </div>
+        <div id="tab-options2" role="tabpanel" class="tab-pane fade">
+            <div class="form-group row">
+                <div class="col-lg-6">
+                        @helper.checkbox(scedForm("slackParams.useLoadShedSV"),
+                            '_label -> "Enable load shedding",
+                            '_class -> "mx-2 my-2",
+                            '_showConstraints -> false)
+                        @helper.inputText(scedForm("slackParams.loadShedPenalty"),
+                            '_label -> "Load shed penalty",
+                            '_class -> "mx-2 my-2",
+                            '_showConstraints -> false)
+
+                        @helper.checkbox(scedForm("slackParams.usePgLBSV"),
+                            '_label -> "Enable Gen. lower bound slack",
+                            '_class -> "mx-2 my-2",
+                            '_showConstraints -> false)
+                        @helper.inputText(scedForm("slackParams.penaltyPgLBSV"),
+                            '_label -> "Gen lowe bound slack penalty",
+                            '_class -> "mx-2 my-2",
+                            '_showConstraints -> false)
+
+                        @helper.checkbox(scedForm("slackParams.preventiveCtrl"),
+                            '_label -> "Force Pgc to pg",
+                            '_class -> "mx-2 my-2",
+                            '_showConstraints -> false)
+
+                        @helper.inputText(scedForm("slackParams.tolForMonitor"),
+                            '_label -> "Tolerance for Monitor",
+                            '_class -> "mx-2 my-2",
+                            '_showConstraints -> false)
+                    </div>
+                    <div class="col-lg-6">
+                        @helper.inputText(scedForm("slackParams.totalSystemImbalance"),
+                            '_label -> "Total system imbalance",
+                            '_class -> "mx-2 my-2",
+                            '_showConstraints -> false)
+                        @helper.checkbox(scedForm("slackParams.autoCorrectInitSystemBalance"),
+                            '_label -> "Autocorrect initial system imbalance",
+                            '_class -> "mx-2 my-2",
+                            '_showConstraints -> false)
+
+                        @helper.checkbox(scedForm("slackParams.useSlackBranch"),
+                            '_label -> "Enable branch slack",
+                            '_class -> "mx-2 my-2",
+                            '_showConstraints -> false)
+                        @helper.inputText(scedForm("slackParams.slackBranchPenalty"),
+                            '_label -> "Penalty for branch slack",
+                            '_class -> "mx-2 my-2",
+                            '_showConstraints -> false)
+
+                        @helper.checkbox(scedForm("slackParams.useSavedCtg"),
+                            '_label -> "Use Saved Contingencies",
+                            '_class -> "mx-2 my-2",
+                            '_showConstraints -> false)
+                        @helper.checkbox(scedForm("slackParams.createReport"),
+                            '_label -> "Create SCED report",
+                            '_class -> "mx-2 my-2",
+                            '_showConstraints -> false)
+
+                        @helper.textarea(scedForm("slackParams.deratings"),
+                            '_label -> "Branch Deratings",
+                            '_class -> "mx-2 my-2",
+                            '_showConstraints -> false)
+                    </div>
+            </div>
+        </div>
+    </div>
+
+}

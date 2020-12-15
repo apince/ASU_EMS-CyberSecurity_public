@@ -1,0 +1,55 @@
+# Routes
+# This file defines all application routes (Higher priority routes first)
+# https://www.playframework.com/documentation/latest/ScalaRouting
+# ~~~~
+
+# An example controller showing a sample home page
+GET     /                      controllers.ModelFormController.index
+POST    /                      controllers.ModelFormController.startApp
+GET     /graph                 controllers.ModelFormController.index2(showGraph : Boolean)
+GET     /gr/:filexpr/:mtype/:groupby/:otd  controllers.ModelFormController.getGraph(filexpr : String,mtype : String, groupby : String, otd: Boolean)
+POST    /savePosition          controllers.ModelFormController.savePosition
+GET     /service/:id/:command controllers.ModelFormController.setService(id : String, command : Boolean)
+GET  /getBusBranch  controllers.ModelFormController.getBusBranch
+
+GET     /downloadData/:operation  controllers.HomeController.downloadData(operation : String)
+
+POST     /uploadData  controllers.HomeController.uploadData
+
+GET    /pwrFlowIndex controllers.ModelFormController.pfFormIndex
+POST   /pwrFlowIndex controllers.ModelFormController.doPF
+
+GET    /stateEstimatorIndex controllers.ModelFormController.seFormIndex
+POST    /stateEstimatorIndex controllers.ModelFormController.doSE
+
+GET     /downloadPFResults controllers.HomeController.downloadPFReport
+GET     /downloadSEResults controllers.HomeController.downloadSEReport
+GET     /downloadCAResults controllers.HomeController.downloadCAReport
+
+GET     /caFormIndex controllers.CaController.caFormIndex
+POST    /runCA controllers.CaController.doCA
+GET     /scedFormIndex controllers.ScedController.scedFormIndex
+POST    /runSced controllers.ScedController.doSced
+GET    /downloadScedResults controllers.HomeController.downloadScedReport
+
+GET /saveCAResults controllers.CaController.saveCA
+GET /compareCAResults controllers.CaController.compareCA
+GET /updateContingencies controllers.ModelFormController.updateContgy(contgys : String)
+
+
+#DEMO ROUTES
+GET /uploadDemoBDD controllers.HomeController.uploadDemoBadData
+GET /uploadAttackMeas controllers.HomeController.uploadSubgraph
+GET /restorePhysical controllers.ModelFormController.restoreSavedDispatch
+GET /restoreLoads controllers.ModelFormController.restoreLoads
+
+#Javascript routes
+GET     /javascriptRoutes2      controllers.ModelFormController.javascriptRoutes
+GET     /javascriptRoutes3      controllers.HomeController.javascriptRoutes
+GET     /javascriptRoutes4      controllers.CaController.javascriptRoutes
+
+
+
+# Map static resources from the /public folder to the /assets URL path
+GET     /assets/*file               controllers.Assets.versioned(path="/public", file: Asset)
+-> /webjars webjars.Routes

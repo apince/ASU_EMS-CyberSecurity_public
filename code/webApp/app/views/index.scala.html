@@ -1,0 +1,51 @@
+@this(webJarsUtil: org.webjars.play.WebJarsUtil)
+@(form: Form[ModelForms.ModelParams], postUrl: Call)(implicit request: MessagesRequestHeader)
+
+
+@main(webJarsUtil, "Cyber Security Simulation Platform Start Page") {
+  @* Global errors are not tied to any particular form field *@
+  @if(form.hasErrors) {
+    <p>error</p>
+    @form.errors.map { error: FormError =>
+      <div>
+        @error.key: @error.message
+      </div>
+    }
+  }
+  <div class="row">
+    <div class="col-lg-6">
+
+      @helper.form(postUrl) {
+        @*helper.CSRF.formField*@
+
+        @helper.select(form("modelName"),Seq(("ACTIVSg", "Texas Synthetic"), ("Polish","Polish"),
+          ("Cascadia","Cascadia"), ("24bus", "24bus")),
+          '_label -> "Model Name",
+          '_showConstraints -> false)
+
+        @helper.inputText(form("leastX"), '_label -> "Least X value(Ohms)",
+          '_showConstraints -> false)
+
+        @helper.checkbox(form("decoupledZ"), '_label -> "Decouple Impedance",
+          '_showConstraints -> false)
+
+        @helper.checkbox(form("genRegulateTerminal"), '_label -> "Override Generation Units' Terminal Regulation",
+          '_showConstraints -> false)
+
+        @helper.checkbox(form("enableSvcVReg"), '_label -> "Enable SVC Voltage Regulation",
+          '_showConstraints -> false)
+
+        @helper.checkbox(form("showGraph"), '_label -> "Full Graph Display on First Load",
+          '_showConstraints -> false)
+
+        <button class="btn btn-primary">Load Model</button>
+      }
+    </div>
+    <div class="col-lg-6">
+      <div id="modelInfo">
+        <h3>Model Information</h3>
+      </div>
+    </div>
+  </div>
+
+}

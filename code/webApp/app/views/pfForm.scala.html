@@ -1,0 +1,54 @@
+@(pfForm : Form[ModelForms.PFParams] , pfPostUrl : Call, formId : String)(implicit request: MessagesRequestHeader)
+
+@helper.form(pfPostUrl, 'id -> formId) {
+    @*helper.CSRF.formField*@
+    <div class="form-group row">
+        <div class="col-lg-6">
+            @helper.checkbox(pfForm("flatStart"),
+                'id -> s"${formId}FlatStart",
+                '_label -> "Flat Start",
+                '_showConstraints -> false)
+            @if(formId == "pfForm") {
+                @helper.checkbox(pfForm("lockSVC"), '_label -> "Lock SVCs",
+                    '_showConstraints -> false)
+            }
+
+            @helper.inputText(pfForm("convergenceTolerance"),
+                'id -> s"${formId}ConvTol",
+                '_label -> "Convergence Tolerance",
+                '_showConstraints -> false)
+
+            @helper.inputText(pfForm("distributedSlackTolerance"),
+                'id -> s"${formId}DslkTol",
+                '_label -> "Distributed Slack Tolerance (MVA)",
+                '_showConstraints -> false)
+
+            @helper.inputText(pfForm("maxIterations"),
+                'id -> s"${formId}MaxIter",
+                '_label -> "Maximum Number of Iterations",
+                '_showConstraints -> false)
+        </div>
+
+        <div class="col-lg-6">
+        @helper.inputText(pfForm("slackActivationTolerance"),
+            'id -> s"${formId}SlkActTol",
+            '_label -> "Slack Activation Tolerance (MVA)",
+            '_showConstraints -> false)
+
+        @helper.inputText(pfForm("unitActiveLimitTolerance"),
+            'id -> s"${formId}UnitActLimTol",
+            '_label -> "Unit Active Limit Tolerance (MW)",
+            '_showConstraints -> false)
+
+        @helper.checkbox(pfForm("summaryReport"),
+            'id -> s"${formId}SumRep",
+            '_label -> "Create Summary Report",
+            '_showConstraints -> false)
+
+        @helper.textarea(pfForm("useSlackBusList"),
+            'id -> s"${formId}UseSlkBusLs",
+            '_label -> "Slack Bus List (leave empty for auto)",
+            '_showConstraints -> false)
+        </div>
+    </div>
+}

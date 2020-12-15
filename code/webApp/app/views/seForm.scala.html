@@ -1,0 +1,26 @@
+@(seForm: Form[ModelForms.SEParams], sePostUrl: Call)(implicit request: MessagesRequestHeader)
+
+@helper.form(sePostUrl, 'id -> "seForm") {
+    @*helper.CSRF.formField*@
+    <div class="form-group">
+        @helper.inputText(seForm("convergenceTolerance"),
+            '_label -> "Convergence Tolerance",
+            '_showConstraints -> false)
+
+        @helper.inputText(seForm("maxIterations"),
+            '_label -> "Maximum Number of Iterations",
+            '_showConstraints -> false)
+
+        @helper.inputText(seForm("scaleNoise"),
+            '_label -> "Noise scale",
+            '_showConstraints -> false)
+
+        @helper.checkbox(seForm("injectAttack"),
+            '_label -> "Simulate attacker action by injecting attack measurements!",
+            '_showConstraints -> false)
+
+        @helper.inputText(seForm("attackRound"),
+            '_label -> "Attack Round",
+            '_showConstraints -> false)
+    </div>
+}

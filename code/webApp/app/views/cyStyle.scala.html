@@ -1,0 +1,75 @@
+@()
+
+`
+  node.island {
+  background-color : #8E7900;
+  opacity : 0.2;
+  z-compound-depth : bottom;
+  text-opacity : .9;
+  }
+
+  node.area {
+  background-color : #99DDBE;
+  opacity : 0.4;
+  z-compound-depth : orphan;
+  text-opacity : .9;
+  }
+
+  node.substation {
+  opacity : 0.5;
+  background-color : #ADD8E6;
+  text-opacity : .9;
+  z-compound-depth : auto;
+  }
+
+  node.bus {
+  content: data(id);
+  width: 10;
+  height: 10;
+  min-zoomed-font-size: 10;
+  font-size: 3;
+  background-color : #848484;
+  opacity : .8;
+  z-compound-depth : top;
+  text-opacity : .9;
+  }
+
+  node.oneTermDev {
+  background-color : #323232;
+  content : data(id);
+  opacity : 1;
+  z-compound-depth : top;
+  z-index : 100;
+  text-opacity : .9;
+  min-zoomed-font-size: 10;
+  font-size: 3;
+  }
+
+  edge {
+  line-color : #888888;
+  min-zoomed-font-size: 10;
+  font-size: 3;
+  label: data(id);
+  width: 3;
+  curve-style: bezier;
+  opacity : 0.8;
+  }
+
+  edge.Transformer {
+  line-style : dashed;
+  }
+
+  edge.TransmissionLine {
+  line-style : solid;
+  }
+
+
+  edge.Switch {
+  line-style : dotted;
+  }
+
+edge.outService {
+  line-color : #FF0000;
+}
+
+  `

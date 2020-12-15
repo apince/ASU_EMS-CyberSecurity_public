@@ -1,0 +1,200 @@
+@(webJarsUtil: org.webjars.play.WebJarsUtil, webtitle: String, scripts  : Html = Html("") , styles : Html = Html(""))(content : Html)
+
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+        <meta name="description" content="">
+        <meta name="author" content="">
+        <link rel="shortcut icon" type="image/png" href="@routes.Assets.versioned("images/favicon.png")">
+
+        <title>@webtitle</title>
+
+        @Html(webJarsUtil.css("bootstrap/4.1.1/css/bootstrap.min.css"))
+
+        @Html(webJarsUtil.css("dropzone.css"))
+        @Html(webJarsUtil.css("css/dataTables.bootstrap4.css"))
+        @Html(webJarsUtil.css("css/bootstrap-colorpicker.min.css"))
+        <link rel="stylesheet" href="@routes.Assets.versioned("stylesheets/main.css")">
+        @styles
+    </head>
+
+    <body>
+        <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
+            <a class="navbar-brand" href="@routes.ModelFormController.index()">Home</a>
+            <button class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarsExampleDefault" aria-controls="navbarsExampleDefault" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse justify-content-stretch" id="navbarDefault">
+                <ul class="navbar-nav mr-auto">
+                    <!--Model level nav-->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle disabled" href="#" id="dropdown01"
+                        data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Model Level</a>
+                        <div class="dropdown-menu" aria-labelledby="dropdown01">
+                            <a id="NodeBreaker" class="dropdown-item" href="#">Node Breaker</a>
+                            <a id="BusBranch" class="dropdown-item" href="#">Bus Branch</a>
+                        </div>
+
+                    </li> <!-- End of model level nav-->
+
+                    <!--Data tools nav-->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="downloadData"
+                        data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Download Model Data</a>
+                        <div class="dropdown-menu" aria-labelledby="downloadData">
+                                <div class="btn-group btn-group-vertical">
+                                    <a class="dropdown-item" href="@routes.HomeController.downloadData("state")">State</a>
+                                    <a class="dropdown-item" href="@routes.HomeController.downloadData("flowMeas")">Flow Measurements</a>
+                                    <a class="dropdown-item" href="@routes.HomeController.downloadData("injectionMeas")">Injection Measurements</a>
+                                    <a class="dropdown-item" href="@routes.HomeController.downloadData("loadMeas")">Load Measurements</a>
+                                    <a class="dropdown-item" href="@routes.HomeController.downloadData("dispatch")">Generator Dispatch</a>
+                                    <a id="slkBusList" class="dropdown-item" href="#">Slack Bus List</a>
+                                </div>
+                        </div>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="uploadData"
+                        data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Upload Data to Model</a>
+                        <div class="dropdown-menu" aria-labelledby="uploadData">
+                            @*<ul class="fa-ul">*@
+                                @*<li class="px-3 py-2">*@
+                                @helper.form(action = routes.HomeController.uploadData,
+                                    'id -> "my-awesome-dropzone",
+                                    'class -> "dropzone form") {
+                                    <div class="success-mark"></div>
+                                    <label for="injectionType">Inject</label>
+                                    <select id="injectionType" name="injectionType" form="uploadForm">
+                                        <option value="state" selected>State</option>
+                                        <option value="flowMeas">Flow Measurements</option>
+                                        <option value="injectionMeas">Injection Measurements</option>
+                                        <option value="loadMeas">Load Measurements</option>
+                                        <option value="dispatch">Dispatch</option>
+                                        <option value="decommitmentList">Decommitment List (will reset model)</option>
+                                    </select>
+                                    <a id="dz-fileRemover" href="#"><i class="fa fa-window-close" aria-hidden="true"></i></a>
+                                }
+                                @*</li>*@
+                            @*</ul>*@
+                        </div>
+                    </li><!-- End of data tools nav-->
+
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="dropdown02"
+                        data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Demo</a>
+                        <div class="dropdown-menu" aria-labelledby="dropdown02">
+                            <a id="bddTester" class="dropdown-item" href="#">Inject some test bad data</a>
+                            <a id="highlightBD" class="dropdown-item" href="#">Filter graph to show detected bad data (Don't forget to change the result color from Graph View!)</a>
+                            <div class="dropdown-divider"></div>
+                            <div class="dropdown-divider"></div>
+                            <a id="physical" class="dropdown-item" href="#">Use SCED set points for physical system (at physical stage of the attack)</a>
+                            <a id="linkToTableauDiagram" target="_blank" class="dropdown-item" href="https://public.tableau.com/profile/roozbeh8177#!/vizhome/diagram_4/Sheet1?publish=yes">Polish consequences diagram</a>
+                            <a id="linkToTableauDiagramTexas" target="_blank" class="dropdown-item" href="https://public.tableau.com/profile/roozbeh5797#!/vizhome/texas_final/Dashboard1?publish=yes">Texas consequences diagram</a>
+                        </div>
+                    </li>
+                    <li class="nav-item">
+                        <a data-toggle="modal" data-target="#myModal"
+                        id="simulation" class="nav-link disabled" href="#">Simulation</a>
+                    </li>
+                </ul>
+                    <!--Graph search and filter -->
+                <ul class="navbar-nav ml-auto">
+                    <li class="nav-item dropdown-menu-right order-first">
+                        <button type="button" id="searchFilterMenu" data-toggle="dropdown"
+                        class="btn btn-outline-secondary dropdown-toggle">
+                            Search and Filter <span class="caret"></span></button>
+                        <ul class="dropdown-menu dropdown-menu-right mt-2">
+                            <li class="px-3 py-2">
+                                <form class="form" role="form">
+                                    <div class="form-group">
+                                        <label for="busFilterExpression">Bus Filter</label>
+                                        <input type="text" id="busFilterExpression" name="busFilterExpression" value="all" />
+                                    </div>
+                                    <div class="form-group">
+                                        <div class="form-check form-check-inline">
+                                            <label for="includeNeighbors">Show Neighbors</label>
+                                            <input type="checkbox" id="includeNeighbors" name="includeNeighbors" value="neighbors" />
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="branchFilterExpression">Branch Filter</label>
+                                        <input type="text" id="branchFilterExpression" name="branchFilterExpression" value="all" />
+                                    </div>
+
+                                    <div class="form-group">
+                                        <div class="form-check form-check-inline">
+                                            <label for="oneTermDev">Show one terminal devs (gens, loads, etc)</label>
+                                            <input id="oneTermDev" type="checkbox" value="oneTermDev" />
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <div class="form-group">
+                                            <label for="groupByExpression">Group by</label>
+                                            <select id="groupByExpression" class="custom-select">
+                                                <option value="none">None</option>
+                                                <option value="substation">Substation</option>
+                                                <option value="controlArea">Control Area</option>
+                                                <option value="island">Island</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="keep">Add new results to currently visible graph</label>
+                                        <input id="keep" type="checkbox" value="keep" checked />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="mycp">Result color</label>
+                                        <input id="mycp" value="#848484" type="text" class="input-lg" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="brWidth">Branch Width</label>
+                                        <input id="brWidth" value="1" type="text" class="input-lg" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="nSize">Node Size</label>
+                                        <input id="nSize" value="10" type="text" class="input-lg" />
+                                    </div>
+                                    <div class="form-group">
+                                        <button type="button" class="btn btn-primary" id="submit">Update graph view</button>
+                                    </div>
+                                </form>
+                            </li>
+                        </ul>
+                    </li>
+                    <li class="nav-item order-last">
+                        <a id="help" class="navbar-brand" href="#">Help</a>
+                    </li>
+                </ul><!-- END of SEARCH AND FILTER DROPDOWN-->
+            </div>
+        </nav>
+
+        <div class="container-fluid">
+          @content
+        </div><!-- /.container -->
+
+
+        <!-- Bootstrap core JavaScript
+    ================================================== -->
+        <!-- Placed at the end of the document so the pages load faster -->
+        @Html(webJarsUtil.script("jquery/3.3.1-1/jquery.js"))
+        @Html(webJarsUtil.script("dist/umd/popper.min.js"))
+        @Html(webJarsUtil.script("bootstrap/4.1.1/js/bootstrap.min.js"))
+        @Html(webJarsUtil.script("svg-with-js/js/fontawesome-all.js"))
+        @Html(webJarsUtil.script("dropzone.js"))
+        @Html(webJarsUtil.script("js/jquery.dataTables.js"))
+        @Html(webJarsUtil.script("js/dataTables.bootstrap4.js"))
+        @Html(webJarsUtil.script("dist/cytoscape.js"))
+        @Html(webJarsUtil.script("cytoscape-cose-bilkent.js"))
+        @Html(webJarsUtil.script("cytoscape-panzoom.js"))
+        @Html(webJarsUtil.script("bootstrap-colorpicker.js"))
+        @Html(webJarsUtil.script(routes.Assets.versioned("javascripts/cytoscape-cxtmenu.js")))
+        <script type="text/javascript" src="@routes.ModelFormController.javascriptRoutes"></script>
+        <script type="text/javascript" src="@routes.HomeController.javascriptRoutes"></script>
+        <script type="text/javascript" src="@routes.CaController.javascriptRoutes"></script>
+        @scripts
+    </body>
+</html>

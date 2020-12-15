@@ -1,0 +1,1766 @@
+@this(webJarsUtil: org.webjars.play.WebJarsUtil)
+@(graphjs :  String ,
+        pForm : Form[ModelForms.PFParams] , pfPostUrl : Call,
+        sForm: Form[ModelForms.SEParams], sePostUrl: Call,
+        cForm : Form[ModelForms.CAParams], caPostUrl : Call,
+        scForm : Form[ModelForms.ScedParams], scedPostUrl : Call)(implicit request: MessagesRequestHeader)
+
+@import views.html.cyStyle
+@import views.html.pfForm
+@import views.html.seForm
+@import views.html.caForm
+
+@script  = {
+    <script type="text/javascript">
+        function iterate(obj, result) {
+            for (let property in obj) {
+                if (obj.hasOwnProperty(property)) {
+                    if (typeof obj[property] === "object") {
+                        let temp = iterate(obj[property],[]);
+                        result.push({name: property, children : temp});
+                    }
+                    else if(obj[property] !== undefined) {
+                        let op = obj[property];
+                        if(typeof op === "number") op = Math.round(op*10000)/10000;
+                        //method 1 flatter tree
+                        if(property !== "ID" && property !== "Type" && property !== "Island ID" &&
+                        property !== "Control Area" && property !== "Substation")
+                            result.push({name: property + ": " + op})
+                        //method 2 deeper tree
+//                        op !== '' ?
+//                                result.push({name: property, children: [obj[property]+""]}) :
+//                                result.push({name: property});
+                    }
+                }
+            }
+            return result;
+        }
+
+        Dropzone.options.myAwesomeDropzone = {
+            success : function(file, message) {
+                console.log("successfully uploaded");
+            }
+        };
+
+        /*
+   ____       _
+  / ___|_   _| |_ ___  ___  ___ __ _ _ __   ___
+  | |  | | | | __/ _ \/ __|/ __/ _` | '_ \ / _ \
+  | |__| |_| | || (_) \__ \ (_| (_| | |_) |  __/
+   \____\__, |\__\___/|___/\___\__,_| .__/ \___|
+        |___/                       |_|
+  */
+
+        //define cytoscape module
+        let GraphModule = (function() {
+
+            //Ctxt menu
+            const menuDefaults = {
+                menuRadius: 100, // the radius of the circular menu in pixels
+                selector: '*', // elements matching this Cytoscape.js selector will trigger cxtmenus
+                fillColor: 'rgba(0, 0, 0, 0.75)', // the background colour of the menu
+                activeFillColor: 'rgba(1, 105, 217, 0.75)', // the colour used to indicate the selected command
+                activePadding: 20, // additional size in pixels for the active command
+                indicatorSize: 24, // the size in pixels of the pointer to the active command
+                separatorWidth: 3, // the empty spacing in pixels between successive commands
+                spotlightPadding: 4, // extra spacing in pixels between the element and the spotlight
+                minSpotlightRadius: 24, // the minimum radius in pixels of the spotlight
+                maxSpotlightRadius: 38, // the maximum radius in pixels of the spotlight
+                openMenuEvents: 'cxttapstart taphold', // space-separated cytoscape events that will open the menu; only `cxttapstart` and/or `taphold` work here
+                itemColor: 'white', // the colour of text in the command's content
+                itemTextShadowColor: 'transparent', // the text shadow colour of the command's content
+                zIndex: 9999, // the z-index of the ui div
+                atMouse: false // draw menu at mouse position
+            };
+            let oneTermSelected = false;
+
+            function initGraph() {
+                graphUpdater(`@graphjs`);
+                cy.center();
+                //let menu = cy.cxtmenu(menuDefaults);
+                $('#layoutSelector').change(function () {
+                    cy.layout({name: this.value, fit: false}).run();
+                });
+
+                $('#positionSubmit').click(function () {
+                    $('#positionSavingMessage').html("Saving...");
+                    let ids = cy.nodes().map(n => n.id());
+                    let x = cy.nodes().map(n => Math.round(n.position().x * 10) / 10);
+                    let y = cy.nodes().map(n => Math.round(n.position().y * 10) / 10);
+                    $.post(jsRoutes2.controllers.ModelFormController.savePosition(),
+                            {ids: ids, xs: x, ys: y})
+                            .done(function () {
+                                $('#positionSavingMessage')
+                                        .html('<i class=\"fas fa-check-circle\" aria-hidden=\"true\"></i>');
+                            }).fail(function (message) {
+                        alert.log(JSON.parse(message));
+                    });
+                });
+
+                cy.on('tap', function (evt) {
+                    let item = evt.target;
+                    let tabPF = $('#tab-pf');
+                    let tabProps = $('#tab-properties');
+                    let tabTelem = $('#tab-telemetry');
+
+                    if (item !== cy) {
+                        let data = item.data();
+                        $('#elementId').html(item.id());
+                        if (item.isNode()) {
+                            if (item.hasClass('bus')) {
+                                let pfData =
+                                        `<ul><li>Name: ${data.Name}</li>
+                                         <li>Voltage Angle: ${data["Voltage Angle(deg)"]} DEG</li>
+                                         <li>Voltage Level: ${data["Voltage Level(KV)"]} KV</li>
+                                         <li>Active Generation: ${data.pg}MW</li>
+                                         <li>Reactive Generation: ${data["Total Q gen(MVAr)"]}MVAr</li>
+                                         <li>Active Demand: ${data.pd}MW</li>
+                                         <li>Reactive Generation: ${data["Total Q demand(MVAr)"]}MVAr</li>
+                                         <li>Total change in active gen: ${data.pgdiff}</li></ul>`;
+                                tabPF.html(pfData);
+
+                                let propData =
+                                        `<ul><li>Island: ${data["Island ID"]}</li>
+                                         <li>Control Area: ${data["Control Area"]}</li>
+                                         <li>Substation: ${data.Substation}</li>
+                                         <li>Owner: ${data.Owner}</li></ul>`;
+                                tabProps.html(propData);
+
+                                let telemData = `<h6>Bus Telemetry</h6>`;
+                                let telem = [data.Telemetry["Bus Injection P"], data.Telemetry["Bus Injection Q"], data.Telemetry["Bus VM"]];
+                                telem.forEach(e => {
+                                    telemData += `<ul><li>Measurement Type: ${e.Type}</li>
+                                              <li>Measurement Value: ${e.Value}</li>
+                                              <li>Measurement Sigma: ${e.Sigma}</li>
+                                              <li>Is telemetred: ${e.Telemetered}</li>
+                                              <li>Is Bad Data: ${e["Bad Data"]}</li>
+                                              <li>Is observable: ${e.Observable}</li></ul>`;
+                                });
+                                tabTelem.html(telemData);
+                            } else if (item.hasClass('Gen')) {
+                                let pfData =
+                                        `<ul><li>Name: ${data.name}</li>
+                                         <li>Mode: ${data.mode}</li>
+                                         <li>Set P: ${data.pSet} MW</li>
+                                         <li>Set Q: ${data.qSet} MVAr</li>
+                                         <li>Active Generation: ${data.pg}MW</li>
+                                         <li>Reactive Generation: ${data.pgdiff}MVW</li>
+                                         <li>Change in Active Gen: ${data.maxQ}MVAr</li>
+                                         <li>Voltage: ${data.vSet}KV</li>
+                                         <li>AVR: ${data.unitInAVR}</li>
+                                         <li>Is Generating: ${data.isGenerating}</li></ul>`;
+                                tabPF.html(pfData);
+
+                                let propData =
+                                        `<ul><li>Type: ${data.gtype}</li>
+                                         <li>Min Operation P: ${data.opMinP}MW</li>
+                                         <li>Max Operation P: ${data.Substation}MW</li>
+                                         <li>Min Q: ${data.minQ}MVAr</li>
+                                         <li>Max Q: ${data.maxQ}MVAr</li>
+                                         <li>Max Q: ${data.maxQ}MVAr</li>
+                                         <li>Voltage Regulation: ${data.isRegKV}</li>
+                                         <li>Voltage Regulation Bus: ${data.regBus}</li>
+                                         </ul>`;
+                                tabProps.html(propData);
+                                tabTelem.html("");
+                            } else if (item.hasClass('Load')) {
+                                let pfData =
+                                        `<ul><li>Name: ${data.name}</li>
+                                         <li>Active Demand: ${data.pd}MW</li>
+                                         <li>Reactive Demand: ${data.qd}MVAr</li></ul>`;
+                                tabPF.html(pfData);
+
+                                let propData =
+                                        `<ul><li>Max P: ${data.maxP}MW</li>
+                                         <li>Max Q: ${data.maxQ}MVAr</li></ul>`;
+                                tabProps.html(propData);
+                                tabTelem.html("");
+                            }
+                        } else {
+                            let pfData =
+                                    `<ul><li>Name: ${data.Name}</li>
+                                         <li>Source: ${data.source}</li>
+                                         <li>Target: ${data.target}</li>
+                                         <li>From P: ${data.fromP}MW</li>
+                                         <li>To P: ${data.toP}MW</li>
+                                         <li>From Q: ${data.fromQ}MVAr</li>
+                                         <li>To Q: ${data.toQ}MVAr</li>
+                                         <li>Flow: ${data.flow_MVA} MVA</li>
+                                         <li>Rating: ${data.LT_Rating} MVA</li></ul>`;
+
+                            tabPF.html(pfData);
+
+                            let otherProps = `<ul><li>R: ${data.R} &Omega;</li>
+                                         <li>X: ${data.X} &Omega;</li>
+                                         <li>From-side tap ratio: ${data["From Tap"]}</li>
+                                         <li>To-side tap ratio: ${data["To Tap"]}</li>
+                                         <li>Magnetizing reactance: ${data.Gmag}&Omega;</li>
+                                         <li>Magnetizing inductance: ${data.Bmag}&Omega;</li>
+                                         <li>From-side charging inductance: ${data["From Side Bchg"]}&Omega;</li>
+                                         <li>To-side charging inductance: ${data["To Side Bchg"]}&Omega;</li>
+                                         <li>Phase shift: ${data["Phase Shift"]} degrees</li></ul>`;
+                            tabProps.html(otherProps);
+
+                            let telemData = ``;
+                            let telem = data.Telemetry ?
+                                    [data.Telemetry.Branch_FromP,
+                                        data.Telemetry.Branch_FromQ,
+                                        data.Telemetry.Branch_ToP,
+                                        data.Telemetry.Branch_ToQ] : undefined;
+
+                            if(telem)
+                            telem.forEach(e => {
+                                telemData += `<ul><li>Measurement Type: ${e.Type}</li>
+                                              <li>Measurement Value: ${e.Value}</li>
+                                              <li>Measurement Sigma: ${e.Sigma}</li>
+                                              <li>Is telemetred: ${e.Telemetered}</li>
+                                              <li>Is Bad Data: ${e["Bad Data"]}</li>
+                                              <li>Is observable: ${e.Observable}</li></ul>`;
+                            });
+                            tabTelem.html(telemData);
+                        }
+                        $('#elemInfoModal').modal('show');
+                    }
+                });
+
+            }
+
+            var cy = window.cy = cytoscape({  //We need window.cy for debugging purposes
+                container: document.getElementById('cy'),
+                @*//elements: @Html(graphjs),*@
+                boxSelectionEnabled: false,
+                autounselectify: true,
+                minZoom: .05,
+                maxZoom: 5,
+                wheelSensitivity: 0.5,
+                hideEdgesOnViewport: true,
+                textureOnViewport: true,
+                pixelRatio: 1,
+                style: `
+                    node { min-zoomed-font-size: 18; }
+                    edge { min-zoomed-font-size: 18;curve-style: bezier;}`,
+                layout: {
+                    name: 'preset',
+                    fit: false
+                }
+            });
+
+            let ctgcyBranchx;
+            let monBranchx;
+
+
+            /*
+             _   _  ____  _____  ______    _____ _____ ____________
+            | \ | |/ __ \|  __ \|  ____|  / ____|_   _|___  /  ____|
+            |  \| | |  | | |  | | |__    | (___   | |    / /| |__
+            | . ` | |  | | |  | |  __|    \___ \  | |   / / |  __|
+            | |\  | |__| | |__| | |____   ____) |_| |_ / /__| |____
+            |_| \_|\____/|_____/|______| |_____/|_____/_____|______|
+            */
+
+            let nodeGradient = function(nodeSizeProp, applySize, applyOpacity) {
+                let end = 0;
+                let xselector = oneTermSelected ? 'node.oneTermDev' : 'node.bus';
+                if (nodeSizeProp === "pd") {
+                    end = cy.nodes(xselector).map(n => n.data().pd).reduce(function (a, b) {
+                        return Math.max(Math.abs(a), Math.abs(b));
+                    });
+                } else if (nodeSizeProp === "pg") {
+                    end = cy.nodes(xselector).map(n => n.data().pg).reduce(function (a, b) {
+                        return Math.max(Math.abs(a), Math.abs(b));
+                    });
+                } else if (nodeSizeProp === "pgdiff") {
+                    end = cy.nodes(xselector).map(n => n.data().pgdiff).reduce(function (a, b) {
+                        return Math.max(Math.abs(a), Math.abs(b));
+                    });
+                }
+                cy.batch(function () {
+                    cy.nodes(xselector).forEach(e => {
+                        if(nodeSizeProp === 'none')
+                            e.style({
+                                'width' : 10,
+                                'height' : 10,
+                                'opacity' : 1
+                            });
+                        else {
+                            if (applySize)
+                                e.style({
+                                    'width': 5 + 20 * parseFloat(Math.sqrt(Math.abs(e.data(nodeSizeProp)))),
+                                    'height': 5 + 20 * parseFloat(Math.sqrt(Math.abs(e.data(nodeSizeProp)))),
+                                });
+                            if(applyOpacity)
+                                e.style('opacity' , e.data(nodeSizeProp) / end)
+                        }
+
+                    });
+                });
+                cy.style().update();
+            };
+
+            /*
+              __ __  __  __   __ __     __  __
+             |_ |  \/ _ |_   /  /  \|  /  \|__)
+             |__|__/\__)|__  \__\__/|__\__/| \
+             */
+            let edgeGradient = function(edgeColorProp, applySize, applyOpacity) {
+                let end = 0;
+                let beg = 0;
+                let dt = cy.edges().map(x => x.data());
+
+                if(edgeColorProp==="LT_Rating") {
+                    end = dt.map(n => n['LT_Rating']).reduce(function(a, b) {
+                        return Math.max(a, b);
+                    });
+                    beg = dt.map(n => n['LT_Rating']).reduce(function(a, b) {
+                        return Math.min(a, b);
+                    });
+                } else if(edgeColorProp === "flow_MVA") {
+                    beg = dt.map(n => n['flow_MVA']).reduce(function(a, b) {
+                        return Math.min(a, b);
+                    });
+                    end = dt.map(n => n['flow_MVA']).reduce(function(a, b) {
+                        return Math.max(a, b);
+                    });
+                } else if(edgeColorProp === "R") {
+                    beg = dt.map(n => n['R']).reduce(function(a, b) {
+                        return Math.min(a, b);
+                    });
+
+                    end = dt.map(n => n['R']).reduce(function(a, b) {
+                        return Math.max(a, b);
+                    });
+                } else if(edgeColorProp === "X") {
+                    beg = dt.map(n => n['X']).reduce(function (a, b) {
+                        return Math.min(a, b);
+                    });
+
+                    end = dt.map(n => n['X']).reduce(function (a, b) {
+                        return Math.max(a, b);
+                    });
+                }
+
+                let span = end - beg;
+
+                cy.batch(function() {
+                    cy.edges().forEach(e => {
+                        if(edgeColorProp === 'none')
+                            e.style({
+                                'opacity': 1,
+                                'width' : 3
+                            });
+                        else {
+                            if(applyOpacity)
+                                e.style('opacity', e.data()[`${edgeColorProp}`] / span);
+                            if(applySize)
+                                e.style('width', 60 * e.data()[`${edgeColorProp}`] / span)
+                        }
+
+                    });
+                });
+                cy.style().update();
+            };
+
+            let ctgcyHighlighter = function(ctBranch, monBranch) {
+                if(ctgcyBranchx) ctgcyBranchx.style('line-color', '#888888').style('width',3);
+                if(monBranchx) monBranchx.style('line-color', '#888888').style('width',3);
+
+                ctgcyBranchx = cy.getElementById(ctBranch);
+                monBranchx =  cy.getElementById(monBranch);
+
+                cy.getElementById(ctBranch).style('line-color','black')
+                        .style('width',18);
+                cy.getElementById(monBranch).style('line-color','red')
+                        .style('width',18);
+                cy.fit(ctgcyBranchx.union(monBranchx));
+            };
+
+            let groupHighlighter = function(ids, color, thickness) {
+                let eless = cy.filter(function(element) {
+                    return ids.indexOf(element.id()) >= 0;
+                });
+                cy.batch(function() {
+                    @*cy.style(@cyStyle());*@
+                    cy.style().selector(eless)
+                            .style('background-color', color)
+                            .style('line-color',color)
+                            .update();
+                    if(thickness > -1)
+                        cy.style().selector(eless)
+                                .style('width', thickness)
+                                .update();
+                });
+                cy.reset();
+                cy.zoom(.12);
+                cy.animate({pan:{x:100,y:-75}});
+
+            };
+
+            let graphUpdater = function(filtexp, selector) {
+                let fselector = "BusBranch";
+                if(selector) fselector = selector;
+                $('#graphReady').removeClass("fa-check-circle").addClass("fa-spinner fa-spin");
+                $('#submit').prop('disabled',true);
+
+                let filx1 = document.getElementById("busFilterExpression").value;
+                let filx2 = document.getElementById("branchFilterExpression").value;
+                let filx = filx1+"\n" + filx2;
+                let groupby = document.getElementById("groupByExpression").value;
+                let kep = document.getElementById("keep").checked;
+                let addNeighbors = document.getElementById("includeNeighbors").checked;
+                oneTermSelected = document.getElementById("oneTermDev").checked;
+
+                $.ajax(jsRoutes2.controllers.ModelFormController.getGraph(filtexp ? filtexp : filx, fselector, groupby, oneTermSelected))
+                        .done(function(result) {
+                            let newg = JSON.parse(result);
+                            console.log(newg);
+                            $('#layoutSelector').val("preset");
+                            let idc = newg.map(x => x.data.id);
+                            //let eless = cy.elements().filter(ele => idc.indexOf(ele.id()) >=0);
+
+                            try {
+                                cy.add(newg);
+                            } catch(err) {
+                                console.log("error adding element to graph");
+                            }
+                            cy.batch(function() {
+                                cy.elements().forEach(e => {
+                                    if(!kep && idc.indexOf(e.id()) < 0) {
+                                       e.style('visibility', 'hidden');
+                                       //TODO: decide later if we want to avoid removing one term devs
+                                        //It may make the rendering faster
+                                       if(e.hasClass('oneTermDev') && !oneTermSelected)
+                                           e.remove();
+                                    } else {
+                                        e.style('visibility', 'visible');
+                                        let color = $('#mycp').val();
+                                        let wid = $('#brWidth').val();
+                                        let siz = $('#nSize').val();
+                                        let fnng = newg.find(ng => ng.data.id === e.id());
+                                        if(fnng) {
+                                            e.move({parent: fnng.data.parent});
+                                            e.data(fnng.data);
+                                            if(e.isNode()) {
+                                                e.style({
+                                                    'opacity': 1,
+                                                    'background-color': color,
+                                                    'width': siz,
+                                                    'height': siz
+                                                });
+                                                if(addNeighbors)
+                                                    e.neighborhood().style({
+                                                        'visibility' : 'visible',
+                                                        'opacity': 1,
+                                                        'background-color': color,
+                                                        'width': siz,
+                                                        'height': siz
+                                                    });
+                                            }
+
+                                            if(e.isEdge())
+                                                e.style({
+                                                    'line-color' : color,
+                                                    'width' : wid
+                                                });
+
+                                        }
+
+                                        if(e.isNode()) {
+                                            e.style({
+                                                'label' : e.id()
+                                            });
+                                        }
+
+                                        if(e.isEdge()) {
+                                            let sgn = Math.sign(e.data().fromP);
+                                            if(sgn > 0)
+                                                e.style({
+                                                    //'width': 3,
+                                                    'mid-source-arrow-shape': 'none',
+                                                    'mid-target-arrow-shape' : 'triangle',
+                                                    'label' : Math.round(e.data()['flow_MVA']*10)/10
+                                                });
+                                            else if(sgn < 0)
+                                                e.style({
+                                                    //'width': 3,
+                                                    'mid-target-arrow-shape': 'none',
+                                                    'mid-source-arrow-shape': 'triangle',
+                                                    'label' : Math.round(e.data()['flow_MVA']*10)/10
+                                                });
+                                            else
+                                                e.style({
+                                                    //'width': 3,
+                                                    'mid-target-arrow-shape': 'none',
+                                                    'mid-source-arrow-shape': 'none',
+                                                    'label' : Math.round(e.data()['flow_MVA']*10)/10
+                                                });
+                                        }
+                                    }
+                                });
+                            });
+                            cy.nodes('node.substation').style('background-color', '#ADD8E6');
+                            cy.nodes('node.area').style('background-color', '#99DDBE');
+                            cy.nodes('node.island').style('background-color', '#8E7900');
+                            cy.center();
+                            cy.style().update();
+
+                            //Show that graph is up-to-date by updating Apply filter! button color
+                            $('#graphReady').removeClass("fa-spinner fa-spin").addClass("fa-check-circle");
+                            $('#submit').prop('disabled',false);
+                        })
+                        .fail(function() {
+                            alert("fail");
+                        });
+            };
+
+            return {
+                cyGraph : cy,
+                update : graphUpdater,
+                ctgcyHighlight : ctgcyHighlighter,
+                groupHighlight : groupHighlighter,
+                edgeGradient : edgeGradient,
+                nodeGradient : nodeGradient,
+                init : initGraph
+            };
+        })();
+
+        /*
+          ______   ______     ______     __    __     ______
+         /\  ___\ /\  __ \   /\  == \   /\ "-./  \   /\  ___\
+         \ \  __\ \ \ \/\ \  \ \  __<   \ \ \-./\ \  \ \___  \
+          \ \_\    \ \_____\  \ \_\ \_\  \ \_\ \ \_\  \/\_____\
+           \/_/     \/_____/   \/_/ /_/   \/_/  \/_/   \/_____/
+         */
+        let FormModule = (function() {
+            let diffMap ={};
+            let violatedInPhysNotInCyb = [];
+
+            function getDiffMap() {
+                return diffMap;
+            }
+
+            function getDangerViols() {
+                return violatedInPhysNotInCyb;
+            }
+
+            /*
+              ______ ____  _____  __  __   _____  ______
+             |  ____/ __ \|  __ \|  \/  | |  __ \|  ____|
+             | |__ | |  | | |__) | \  / | | |__) | |__
+             |  __|| |  | |  _  /| |\/| | |  ___/|  __|
+             | |   | |__| | | \ \| |  | | | |    | |
+             |_|    \____/|_|  \_\_|  |_| |_|    |_|
+             */
+            function pfFormSubmitter( event ) {
+                event.preventDefault();
+                $('#errCard').show();
+                $('[name="scada-flow"]').css('fill', "url(#gradanim)");
+                $('[name="scada-flow"]').toggleClass('animated');
+                $('tspan[id^=svg]').text("");
+                $('[id$="box"]').css('fill', "white");
+                $('[name$="flow"]').css('fill', "white");
+                $.post('@pfPostUrl', $("form#pfForm").serialize())
+                        .done(function(message) {
+                            $('[name="scada-flow"]').toggleClass('animated');
+                            $('[name="scada-flow"]').css('fill', "yellow");
+                            let tdata = JSON.parse(message);
+                            if(!tdata['errorMessage'])
+                                $('#errCard').hide();
+                            $('#pfResultsTable').DataTable({
+                                destroy : true,
+                                paging : false,
+                                searching : false,
+                                ordering : false,
+                                data: tdata,
+                                columns: [
+                                    {
+                                        data: "island",
+                                        title: "Island ID"
+                                    },
+                                    {
+                                        data: "status",
+                                        title: "Status"
+                                    },
+                                    {
+                                        data: "generatedMW",
+                                        title: "Gen. MW"
+                                    },
+                                    {
+                                        data: "generatedMVAr",
+                                        title: "Gen. MVAr"
+                                    },
+                                    {
+                                        data: "loadMW",
+                                        title: "Load MW"
+                                    },
+                                    {
+                                        data: "loadMVAr",
+                                        title: "Load MVAr"
+                                    },
+                                    {
+                                        data: "worstVoltageBus",
+                                        title: "Worst V. Bus"
+                                    },
+                                    {
+                                        data: "worstVoltageValue",
+                                        title: "Worst Voltage"
+                                    }
+                                ],
+                                columnDefs: [
+                                    { render: function ( data, type, row ) {
+                                            return Math.round(data*100)/100;
+                                        },
+                                        targets: [ 2, 3, 4, 5, 7 ]
+                                    }
+                                ]
+                            });
+                            $('#pfResultsTable2').DataTable({
+                                destroy : true,
+                                paging : false,
+                                searching : false,
+                                ordering : false,
+                                data: tdata,
+                                columns: [
+                                    {
+                                        data: "island",
+                                        title: "Island ID"
+                                    },
+                                    {
+                                        data: "statusP",
+                                        title: "P Status"
+                                    },
+                                    {
+                                        data: "numIterP",
+                                        title: "P #Iterations"
+                                    },
+                                    {
+                                        data: "statusQ",
+                                        title: "Q status"
+                                    },
+                                    {
+                                        data: "numIterQ",
+                                        title: "Q #Iterations"
+                                    },
+                                    {
+                                        data: "worstPMismatchBus",
+                                        title: "Worst P mismatch Bus"
+                                    },
+                                    {
+                                        data: "worstPMismatchValue",
+                                        title: "Worst P mismatch"
+                                    },
+                                    {
+                                        data: "worstQMismatchBus",
+                                        title: "Worst Q mismatch Bus"
+                                    },
+                                    {
+                                        data: "worstQMismatchValue",
+                                        title: "Worst Q mismatch"
+                                    },
+                                    {
+                                        data: "maxVoltageLimit",
+                                        title: "Max V. Limit"
+                                    },
+                                    {
+                                        data: "minVoltageLimit",
+                                        title: "Min V. Limit"
+                                    },
+                                ],
+                                columnDefs: [
+                                    { render: function ( data, type, row ) {
+                                            return Math.round(data*100)/100;
+                                        },
+                                        targets: [ 6, 8, 9, 10 ] }
+                                ]
+                            });
+                            $('#collapsePfResults').addClass('show');
+                            $('#collapsePfOptions').removeClass('show');
+                            $('#pfErrorMessage').contents().remove();
+                            $('#pfErrorMessage').html(tdata['errorMessage']);
+                            //$('[id$=box]').css('fill', "white");
+                            if($('#injectAttack').prop('checked'))
+                                $('#attck-box').css('fill', "red");
+                            $('#scada-box').css('fill', "lightgreen");
+                            $('#se-box').css('fill', "lightgray");
+                            $('#bdd-box').css('fill', "lightgray");
+                            $('#nnd-box').css('fill', "lightgray");
+                        }).fail(function(response) {
+                    let jse = JSON.parse(response.responseText);
+                    let jkey = Object.keys(jse)[0];
+                    let msg = jse[jkey][0];
+                    $('#pfResults').html(jkey + ": " + msg);
+                    $('#scada-box').css('fill', "#ff4d4d");
+                });
+            }
+
+            /*
+              ______ ____  _____  __  __    _____ ______
+             |  ____/ __ \|  __ \|  \/  |  / ____|  ____|
+             | |__ | |  | | |__) | \  / | | (___ | |__
+             |  __|| |  | |  _  /| |\/| |  \___ \|  __|
+             | |   | |__| | | \ \| |  | |  ____) | |____
+             |_|    \____/|_|  \_\_|  |_| |_____/|______|
+
+             */
+            function seFormSubmit ( event ) {
+                event.preventDefault();
+                $('#seRunning').removeClass("fa-check-circle")
+                        .addClass("fa-spinner fa-spin");
+                $('#badDataCard').show();
+                $('[name="se-flow"]').css('fill', "url(#gradanim)");
+                $('[name="se-flow"]').toggleClass('animated');
+                $('[name="bdd-flow"]').css('fill', "url(#gradanim)");
+                $('[name="bdd-flow"]').toggleClass('animated');
+                $.post(`@sePostUrl`, $('form#seForm').serialize())
+                        .done(function(message) {
+                            if($('#injectAttack').prop('checked'))
+                                $('#attck-box').css('fill', "red");
+                            $('#se-box').css('fill', "lightgreen");
+                            $('[name="se-flow"]').toggleClass('animated');
+                            $('[name="bdd-flow"]').toggleClass('animated');
+                            $('[name="se-flow"]').css('fill', "yellow");
+                            $('[name="bdd-flow"]').css('fill', "yellow");
+                            let nndetectorMsg = message[0]['NNDetector'];
+                            //console.log(nndetectorMsg)
+                            if(nndetectorMsg[0] === 1) {
+                                $('#detectionResults')
+                                        .html("Detector FLAGGED loads as anomalous");
+                                $('#nnd-box').css('fill', "#ff4d4d");
+                            } else {
+                                $('#nnd-box').css('fill', "lightgreen");
+                            }
+                            //group messages
+                            $('#svgADDResults')
+                                    .text("# of flagged groups: " +
+                                            nndetectorMsg[2] + " / " + nndetectorMsg[1]);
+                            $('#svgADDResults2')
+                                    .text("Group with highest alarm: " + nndetectorMsg[3]);
+                            $('#svgADDResults3')
+                                    .text("Threshold: " + Math.round(nndetectorMsg[4] * 100)/100 +
+                                            ", Value: " + Math.round(nndetectorMsg[5] * 100) / 100);
+                            let chiSqDetectorMsg = message[0]['CHiSqDetector'];
+                            let errMessage = message[1];
+                            let tdata = chiSqDetectorMsg;
+                            let brows = chiSqDetectorMsg[0]['badMeasRows'];
+                            $('#svgBDDResults')
+                                    .text("Thr:" + Math.floor(tdata[0].threshold * 100)/100 +
+                            ", Err: " + Math.floor(tdata[0].error * 100) / 100);
+                            if(brows) {
+                                $('#bdd-box').css('fill', "#ff4d4d");
+                                $('#svgBDDResults2').text("#bad rows= " + brows.length);
+                                for(bitem of brows) {
+                                    let tmdata = bitem['Telemetry_Data'];
+                                    delete bitem['Telemetry_Data'];
+                                    bitem['id'] = tmdata['ID'];
+                                    bitem['type'] = tmdata['Type'];
+                                    bitem['meas'] = Math.round(tmdata['Value'] * 10000) / 10000;
+                                    bitem['oldMeas'] = Math.round(bitem['Old_Measurement'] * 1000) / 1000;
+                                    bitem['sigma'] = Math.round(bitem['Per_Unit_Sigma'] * 10000) / 10000;
+                                }
+                            }
+                            delete tdata[0].badMeasRows;
+                            $('#seResultsTable').DataTable({
+                                destroy : true,
+                                paging : false,
+                                searching : false,
+                                data: tdata,
+                                columns:
+                                        [
+                                            {
+                                                data : "threshold",
+                                                title : "Threshold"
+                                            },
+                                            {
+                                                data : "error",
+                                                title : "Error"
+                                            },
+                                            {
+                                                data : "iter",
+                                                title : "Iterations"
+                                            }
+                                        ]
+                            });
+                            $('#seResultsTable2').DataTable({
+                                destroy : true,
+                                paging : false,
+                                searching : false,
+                                data: tdata,
+                                columns:
+                                        [
+                                            {
+                                                data : "norm",
+                                                title : "Convergence Norm"
+                                            },
+                                            {
+                                                data : "degFree",
+                                                title : "Degrees of Freedom"
+                                            },
+                                            {
+                                                data : "obsIsland",
+                                                title : "Observable Island"
+                                            },
+                                            {
+                                                data : "matrixRowCount",
+                                                title : "Matrix Row Count"
+                                            },
+                                            {
+                                                data : "obsRowCount",
+                                                title : "Observable Row Count"
+                                            },
+                                            {
+                                                data : "zInjRowCount",
+                                                title : "Zero Inj. Row Count"
+                                            }
+                                        ]
+                            });
+                            if(brows.length===0) {
+                                $('#bdd-box').css('fill', "lightgreen");
+                                $('#badDataCard').hide();
+                            } else {
+                                let seta = $('#seResultsTable3').DataTable({
+                                    destroy : true,
+                                    data: brows,
+                                    columns: [
+                                        {
+                                            data: "id",
+                                            title: "ID"
+                                        },
+                                        {
+                                            data: "type",
+                                            title: "Type"
+                                        },
+                                        {
+                                            data: "meas",
+                                            title: "Estimated Measurement"
+                                        },
+                                        {
+                                            data: "oldMeas",
+                                            title: "Telemetry measurement"
+                                        },
+                                        {
+                                            data: "sigma",
+                                            title: "Sigma"
+                                        }
+                                    ]
+                                });
+                                $('#seResultsTable3 tbody').on('click', 'tr', function () {
+                                    let data = seta.row(this).data();
+                                    GraphModule.ctgcyHighlight(data['id'], data['id']);
+                                    $('#myModal').modal('hide')
+                                });
+                            }
+                            $('#seRunning').removeClass("fa-spinner fa-spin")
+                                    .addClass("fa-check-circle");
+                            $('#collapseSEResults').addClass('show');
+                            $('#collapseSEOptions').removeClass('show');
+                            $('#seErrorMessage').html(errMessage['errorMessage']);
+                            $('#ca-box').css('fill', "lightgray");
+                        }).fail(function(response) {
+                    console.log("FAILED");
+                    alert("Operation failed: " + response.responseText);
+                    $('#seRunning').removeClass("fa-spinner fa-spin")
+                            .addClass("fa-check-circle");
+                    $('#se-box').css('fill', "#ff4d4d");
+                });
+            }
+
+            /*
+              ______ ____  _____  __   __   _____
+             |  ___ / __ \|  __ \|  \/  |  / ____|   /\
+             | |__ | |  | | |__) | \  / | | |       /  \
+             |  __|| |  | |  _  /| |\/| | | |      / /\ \
+             | |   | |__| | | \ \| |  | | | |____ / ____ \
+             |_|    \____/|_|  \_\_|  |_|  \_____/_/    \_\
+             */
+            function caFormSubmit(event) {
+                event.preventDefault();
+                $('#saveCA, #compareCA').unbind("click");
+                $('#contgyUpdateForm').unbind('submit');
+
+                $('#caRunning').removeClass('fa-check-circle')
+                        .addClass('fa-spin fa-spinner');
+                $('[name="ca-flow"]').css('fill', "url(#gradanim)");
+                $('[name="ca-flow"]').toggleClass('animated');
+                $.post(`@caPostUrl`, $('form#caForm').serialize())
+                        .done(function(message) {
+                            $('[name="ca-flow"]').toggleClass('animated');
+                            $('[name="ca-flow"]').css('fill', "yellow");
+                            $('#saveCA').click(function() {
+                                $.ajax(jsRoutes4.controllers.CaController.saveCA())
+                                        .done(function(message) {
+                                            alert(message);
+                                        }).fail(function() {
+                                    alert("FAILED to save contingency results");
+                                });
+                            });
+
+                            $('#compareCA').click(function() {
+                                $.ajax(jsRoutes4.controllers.CaController.compareCA())
+                                        .done(function(newData) {
+                                            let ddata = JSON.parse(newData, (key, value) => {
+                                                return typeof value === 'number'
+                                                        ? Math.round(value*100)/100
+                                                        : value;
+                                            });
+                                            let tddata = ddata.map( item => item['results']);
+                                            //let eddata = ddata['errorMessage'];
+
+                                            let ddataf = [];
+                                            let provisionalPhysViols1 = [];
+                                            let provisionalPhysViols2 = [];
+                                            for(dd of tddata)
+                                                for(let vv of dd) {
+                                                    ddataf.push(vv);
+                                                    let candid = vv['Contingency_Branch'] +
+                                                            "***][***" + vv['Affected_Branch'];
+
+                                                    if(vv['Severity'] === "Violation" &&
+                                                            vv['Status'] === "Current" &&
+                                                            provisionalPhysViols1.indexOf(candid) < 0) {
+                                                        provisionalPhysViols1.push(candid);
+                                                        if(provisionalPhysViols2.indexOf(candid) > -1)
+                                                            violatedInPhysNotInCyb.push(candid.split("***][***")[1]);
+                                                    } else if(vv['Severity'] !== "Violation" &&
+                                                            vv['Status'] === "Saved" &&
+                                                            provisionalPhysViols2.indexOf(candid) < 0) {
+                                                        provisionalPhysViols2.push(candid);
+                                                        if(provisionalPhysViols1.indexOf(candid) > -1)
+                                                            violatedInPhysNotInCyb.push(candid.split("***][***")[1]);
+                                                    }
+                                                }
+                                            cat.clear();
+                                            cat.rows.add(ddataf);
+                                            let rowCount = cat.rows()[0].length;
+                                            for (let row=0;row < rowCount;row++) {
+                                                if (cat.cells(row, 0).data()[0]==="Current") {
+                                                    cat.rows(row).nodes().to$().css('font-weight', 'bold')
+                                                }
+                                            }
+                                            cat.draw();
+                                        }).fail(function() {
+                                    alert("FAILED to compare results");
+                                });
+                            });
+
+                            let tdata = message['results'];
+                            let edata = message['errorMessage'];
+                            let warningCount = tdata.filter(d => d['Severity']==="Warning").length;
+                            let violCount = tdata.filter(d => d['Severity']==="Violation").length;
+                            let worst = tdata.map(d => d['Overflow_Percent'])
+                                    .reduce((acc, cur) => Math.max(acc,cur), 0);
+                            $('#svgCAResults').text("# of Contingencies: " + message['caSize']);
+                            $('#svgCAResults2').text(`${warningCount} warnings, ${violCount} violations`);
+                            $('#svgCAResults3').text("Line Loading %= " +
+                                    Math.ceil(100*(worst))/100);
+                            let catContainer = $('#caResultsTable');
+                            let cat = catContainer.DataTable({
+                                destroy : true,
+                                data: tdata,
+                                columns: [
+                                    {
+                                        data: ((row, type, set, meta) =>
+                                                row['Contingency_Branch'] + "___" +
+                                                row['Affected_Branch']),
+                                        title: "Active"
+                                    },
+                                    {
+                                        data: "Status",
+                                        title : "Status"
+                                    },
+                                    {
+                                        data: "Case_Type",
+                                        title: "Case"
+                                    },
+                                    {
+                                        data: "Contingency_Branch",
+                                        title: "Contingency Branch"
+                                    },
+                                    {
+                                        data: "Affected_Branch",
+                                        title: "Monitored Branch"
+                                    },
+                                    {
+                                        data: "Pre_Cont_Flow",
+                                        title: "Pre Cont. Flow"
+                                    },
+                                    {
+                                        data: "Post_Cont_Flow",
+                                        title: "Post Cont. Flow"
+                                    },
+                                    {
+                                        data: "Overflow_Percent",
+                                        title: "Line Loading %"
+                                    },
+                                    {
+                                        data: "Severity",
+                                        title: "Severity"
+                                    }
+                                ],
+                                columnDefs: [
+                                    { render: function ( data, type, row ) {
+                                            return Math.round(data*100)/100;
+                                        },
+                                        targets: [ 5, 6]
+                                    },
+                                    { render: function ( data, type, row ) {
+                                            return Math.round(data*100)/100;
+                                        },
+                                        targets: [7]
+                                    },
+                                    {
+                                        targets: [ 0 ],
+                                        render: function ( data, type, row ) {
+                                            return `<input id="${data}" form="contgyUpdateForm" type="checkbox" checked />`;
+                                        }
+                                    }],
+                                order: [[ 7, "desc" ]]
+                            });
+                            catContainer.find('tbody').on('dblclick', 'tr', function () {
+                                let data = cat.row(this).data();
+                                GraphModule.ctgcyHighlight(data['Contingency_Branch'], data['Affected_Branch']);
+                                $('#myModal').modal('hide');
+                            });
+                            $('#caRunning').removeClass('fa-spin fa-spinner')
+                                    .addClass('fa-check-circle');
+
+                            $('#collapseCaResults').addClass('show');
+                            $('#collapseCapfOptions').removeClass('show');
+                            $('#collapseCaOptions').removeClass('show');
+                            $('#caErrorMessage').contents().remove();
+                            $('#caErrorMessage').html(edata);
+                            if($('#injectAttack').prop('checked'))
+                                $('#attck-box').css('fill', "red");
+                            $('#ca-box').css('fill', "lightgreen");
+                            $('#sced-box').css('fill', "lightgray");
+
+                            $('#contgyUpdateForm').on('submit', function(event) {
+                                event.preventDefault();
+                                let chks = $("input[form=contgyUpdateForm]");
+                                let result = [];
+                                let unselectedRows = [];
+                                for(let chk of chks) {
+                                    if (chk.hasAttribute('checked') && !chk.checked) {
+                                        result.push(chk.id);
+                                        unselectedRows.push()
+                                    }
+                                }
+                                $.ajax(jsRoutes2.controllers.ModelFormController.updateContgy(result))
+                                        .done(function(newData) {
+                                            alert(`${result.length} contingencies removed! Saved contingencies cache wiped.`)
+                                        }).fail(function(response) {
+                                            alert('Could not remove unselected contingencies...')
+                                });
+
+                            });
+
+                        }).fail(function(response) {
+                            console.log(response);
+                            alert("Please try again!");
+                    $('#ca-box').css('fill', "lightgrey");
+                    $('[name="ca-flow"]').removeClass('animated');
+                });
+            }
+            /*
+              ______ ____  _____  __  __    _____  _____ ______ _____
+             |  ____/ __ \|  __ \|  \/  |  / ____|/ ____|  ____|  __ \
+             | |__ | |  | | |__) | \  / | | (___ | |    | |__  | |  | |
+             |  __|| |  | |  _  /| |\/| |  \___ \| |    |  __| | |  | |
+             | |   | |__| | | \ \| |  | |  ____) | |____| |____| |__| |
+             |_|    \____/|_|  \_\_|  |_| |_____/ \_____|______|_____/
+             */
+            function scedFormSubmit(event) {
+                event.preventDefault();
+                $('#scedRunning').removeClass('fa-check-circle')
+                        .addClass('fa-spin fa-spinner');
+                $('[name="sced-flow"]').css('fill', "url(#gradanim)");
+                $('[name="sced-flow"]').toggleClass('animated');
+                $.post(`@scedPostUrl`, $('form#scedForm').serialize())
+                        .done(function(message) {
+                            $('[name="sced-flow"]').toggleClass('animated');
+                            $('[name="sced-flow"]').css('fill', "yellow");
+                            $('#scedErrors').empty();
+                            if(message === "SCEDError")
+                                $('#scedErrors')
+                                        .text('SCED Error. Please consult the logs.' );
+                            else {
+                                let abschange = message
+                                        .map(x => x['diff'])
+                                        .reduce(((a,b) => Math.abs(a) + Math.abs(b)), 0);
+                                abschange = Math.floor(abschange * 100) / 100;
+                                $('#svgSCEDResults2').text("Abs generation change");
+                                $('#svgSCEDResults3').text(abschange + "MW");
+
+                                $('#scedResultsTable').DataTable({
+                                    destroy: true,
+                                    data: message,
+                                    columns: [
+                                        {
+                                            data: "id",
+                                            title: "id"
+                                        },
+                                        {
+                                            data: "diff",
+                                            title: "Dispatch Difference (MW)"
+                                        }
+                                    ],
+                                    order: [[1, "desc"]]
+                                });
+                            }
+                            $('#scedRunning').removeClass('fa-spin fa-spinner')
+                                    .addClass('fa-check-circle');
+                            $('#collapseScedOptions').removeClass('show');
+                            $('#collapseScedResults').addClass('show');
+                            if($('#injectAttack').prop('checked'))
+                                $('#attck-box').css('fill', "red");
+                            $('#sced-box').css('fill', "lightgreen");
+                            $('#scada-box').css('fill', "lightgray");
+                        }).fail(function(response) {
+                            console.log(response);
+                    $('#sced-box').css('fill', "#ff4d4d");
+                });
+            }
+
+            return {
+                pfForm : pfFormSubmitter,
+                seForm : seFormSubmit,
+                caForm : caFormSubmit,
+                scedForm : scedFormSubmit,
+                dmap : getDiffMap,
+                dangerViols : getDangerViols
+            }
+        })();
+        /*
+          _______   _______ .___  ___.   ______
+         |       \ |   ____||   \/   |  /  __  \
+         |  .--.  ||  |__   |  \  /  | |  |  |  |
+         |  |  |  ||   __|  |  |\/|  | |  |  |  |
+         |  '--'  ||  |____ |  |  |  | |  `--'  |
+         |_______/ |_______||__|  |__|  \______/
+          */
+            $(function() {
+                GraphModule.cyGraph.ready(function() {
+                    GraphModule.init();
+                });
+                //This is to prevent the dropdown menu from being closed
+                //when there is a click inside form
+                $('ul.dropdown-menu').on('click', function(event){
+                    event.stopPropagation();
+                });
+
+                $('#pfForm').bind("submit", FormModule.pfForm);
+                $('#scada-box').bind("click", FormModule.pfForm);
+                $('#seForm').bind("submit", FormModule.seForm);
+                $('#se-box').bind("click", FormModule.seForm);
+                $('#caForm').bind("submit", FormModule.caForm);
+                $('#ca-box').bind("click", FormModule.caForm);
+                $('#scedForm').bind("submit", FormModule.scedForm);
+                $('#sced-box').bind("click", FormModule.scedForm);
+                $('#attck-box').on("click", function() {
+                    let pr = $('#injectAttack').prop('checked');
+                    if(pr) {
+                        $('#injectAttack').prop('checked', false);
+                        $('#attck-box').css('fill', "white");
+                    } else {
+                        $('#injectAttack').prop('checked', true);
+                        $('#attck-box').css('fill', "red");
+                    }
+                });
+
+                $('#simulation, #dropdown01, #settingsDropDown').toggleClass('disabled');
+
+                $('#NodeBreaker, #BusBranch').click(function() {
+                    GraphModule.update("", this.id);
+                });
+
+                $('#branchGradientSelector').change(function() {
+                    let edgeColorProp = $(this).val();
+                    GraphModule.edgeGradient(edgeColorProp, $('#size-check').prop('checked'),
+                            $('#opacity-check').prop('checked'));
+                });
+
+                $('#nodeSizeSelector').change(function () {
+                    let nodeSizeProp = $(this).val();
+                    GraphModule.nodeGradient(nodeSizeProp, $('#size-check').prop('checked'),
+                            $('#opacity-check').prop('checked'));
+                });
+
+
+                //DEMO stuff here
+                $('#bddTester').click(function() {
+                    $.get(jsRoutes3.controllers.HomeController.uploadDemoBadData())
+                            .done(function (message) {
+                                alert("Line 3-10-1: PF & QF are now bad\nLine 6-31-1: PT & QT are now bad");
+                                GraphModule.groupHighlight(message, '#FFA500', 16);
+                            }).fail(function (message) {
+                        alert(JSON.stringify(message));
+                    });
+                });
+
+                $('#highlightBD').click(function() {
+                    let kp = $('#keep');
+                    kp.prop('checked', true);
+                    GraphModule.cyGraph.style(@cyStyle()).update();
+                    $('#mycp').val("#0000FF");
+                    GraphModule.update("pinj_bdd is true or qinj bdd is true\n" +
+                            "fromp_bdd is true or top_bdd is true or fromq_bdd is true or toq_bdd is true");
+                    kp.prop('checked', false);
+                });
+
+                $('#attackTester').click(function() {
+                    $.get(jsRoutes3.controllers.HomeController.uploadAttackMeas())
+                            .done(function (message) {
+                                GraphModule.groupHighlight(message, '#0000ff', -1)
+                            }).fail(function (message) {
+                        alert(JSON.stringify(message));
+                    });
+                });
+
+                $('#physical').click(function() {
+                    $.get(jsRoutes2.controllers.ModelFormController.restoreSavedDispatch())
+                            .done(function (message) {
+                                alert(message);
+                            }).fail(function (message) {
+                        alert(message);
+                    });
+                });
+
+                $('#loadReset').click(function() {
+                    $.get(jsRoutes2.controllers.ModelFormController.restoreLoads())
+                            .done(function (message) {
+                                alert(message);
+                            }).fail(function (message) {
+                        alert(message);
+                    });
+                });
+
+                $('#highlightTarget').click(function() {
+                    GraphModule.ctgcyHighlight('ln-894-1514-1', 'ln-939-1416-1')
+                });
+
+                $('#highlightDangerViols').click(function() {
+                    GraphModule.groupHighlight(FormModule.dangerViols(), "#0000ff", 12);
+                });
+
+                $('#highlightSubgraph').click(function() {
+                    $.get(jsRoutes3.controllers.HomeController.uploadSubgraph())
+                            .done(function(hdata) {
+                        GraphModule.groupHighlight(hdata, '#0000ff', -1);
+                    }).fail(function() {
+                        alert("Subgraph loading failed");
+                    });
+                });
+
+                //Slack bus display
+                $('#slkBusList').click(function() {
+                    $.get(jsRoutes2.controllers.ModelFormController.getSlackBusList())
+                            .done(function(message) {
+                                alert(JSON.stringify(message));
+                            }).fail(function(message) {
+                       alert(JSON.parse(message));
+                    });
+                });
+
+                $('#dz-fileRemover').click(function() {
+                    Dropzone.forElement("#my-awesome-dropzone").removeAllFiles();
+                });
+
+                $('#mycp').colorpicker();
+
+                $('#submit').click(function(event) {
+                    event.preventDefault();
+                    GraphModule.update();
+                });
+
+                $('#busBranchUpdater').click(function() {
+                    $.get(jsRoutes2.controllers.ModelFormController.getBusBranch())
+                            .fail(function(message) {
+                               alert.log(JSON.parse(message));
+                            });
+                });
+            });
+    </script>
+
+}
+
+@main(webJarsUtil, "Graph model", script) {
+    <div class="row">
+       <div class="col-lg-12">
+
+           <!-- Simulaion Modal -->
+           <div class="modal fade" id="myModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+               <div class="modal-dialog modal-lg" role="document">
+                   <div class="modal-content">
+                       <div class="modal-header">
+                           <h4 class="modal-title" id="operationLabel">Simulation</h4>
+                           <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">×</span><span class="sr-only">Close</span></button>
+                       </div>
+
+                       <div class="modal-body modal-lg">
+                           <div class="row">
+                               <div class="col-lg-12">
+                                   <div class="panel panel-default">
+                                       <ul class="nav nav-tabs" role="tablist">
+                                           <li class="nav-item"><a href="#tab-overview" role="tab" data-toggle="tab" class="nav-link active">Overview</a></li>
+                                           <li class="nav-item"><a href="#tab-powerFlow" role="tab" data-toggle="tab" class="nav-link">Power Flow</a></li>
+                                           <li class="nav-item"><a href="#tab-stateEstimator" role="tab" data-toggle="tab" class="nav-link">State Estimation</a></li>
+                                           <li class="nav-item"><a href="#tab-contingencyAnalysis" role="tab" data-toggle="tab" class="nav-link">Contingency Analysis</a></li>
+                                           <li class="nav-item"><a href="#tab-SCED" role="tab" data-toggle="tab" class="nav-link">SCED</a></li>
+                                       </ul>
+
+                                       <div id="simTabContent" class="tab-content">
+                                           <!--Overview tab-->
+                                           <div id="tab-overview" role="tabpanel" class="tab-pane active">
+                                               @svg()
+                                           </div>
+                                           <div id="tab-powerFlow" role="tabpanel" class="tab-pane fade">
+                                               <button id="simSCADA" form="pfForm" class="btn btn-primary my-2">
+                                                   Run power flow</button>
+                                               <div class="accordion" id="pfAccordion">
+                                                   <div class="card">
+                                                       <div class="card-header" id="pfOptionsCardHeading">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link" type="button"
+                                                               data-toggle="collapse" data-target="#collapsePfOptions"
+                                                               aria-expanded="true" aria-controls="collapsePfOptions">
+                                                                   Power Flow Options
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapsePfOptions" class="collapse"
+                                                       aria-labelledby="pfOptionsCardHeading" data-parent="#pfAccordion">
+                                                           <div class="card-body">
+                                                               <div id = "formBody" class="panel-body">
+                                                               @pfForm(pForm, pfPostUrl,"pfForm")
+                                                               </div>
+                                                           </div>
+                                                       </div>
+                                                   </div>
+                                                       <!-- Card 1-->
+                                                   <div class="card">
+                                                       <div class="card-header" id="pfResultsCardHeading">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link" type="button"
+                                                               data-toggle="collapse" data-target="#collapsePfResults"
+                                                               aria-expanded="true" aria-controls="collapsePfResults">
+                                                                   Power Flow Results 1
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapsePfResults" class="collapse"
+                                                       aria-labelledby="pfResultsCardHeading" data-parent="#pfAccordion">
+                                                           <div id="pfResults" class="card-body">
+                                                               <table class="resultTable table table-striped table-bordered"
+                                                               id="pfResultsTable"></table>
+                                                           </div>
+                                                       </div>
+                                                   </div> <!-- End of card 1-->
+                                                   <!--Card 2-->
+                                                   <div class="card">
+                                                       <div class="card-header" id="pfResultsCardHeading2">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link" type="button"
+                                                               data-toggle="collapse" data-target="#collapsePfResults2"
+                                                               aria-expanded="true" aria-controls="collapsePfResults2">
+                                                                   Power Flow Results 2
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapsePfResults2" class="collapse"
+                                                       aria-labelledby="pfResultsCardHeading2" data-parent="#pfAccordion">
+                                                           <div id="pfResults2" class="card-body">
+                                                               <table class="resultTable table table-striped table-bordered"
+                                                               id="pfResultsTable2"></table>
+                                                           </div>
+                                                           <a class="btn btn-success btn-small mx-2"
+                                                       href="@routes.HomeController.downloadPFReport()">
+                                                           Download PF Report</a>
+                                                       </div>
+                                                   </div> <!--End of card 2-->
+                                                   <!--Card 3-->
+                                                   <div id="errCard" class="card">
+                                                       <div class="card-header" id="pfErrorCardHeading">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link errorCard" type="button"
+                                                               data-toggle="collapse" data-target="#collapsePfError"
+                                                               aria-expanded="true" aria-controls="collapsePfError">
+                                                                   Power Flow Console
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapsePfError" class="collapse"
+                                                       aria-labelledby="pfErrorCardHeading" data-parent="#pfAccordion">
+                                                           <div id="pfErrorMessage" class="card-body"></div>
+                                                       </div>
+                                                   </div> <!--End of card 3-->
+
+                                               </div> <!-- End of pf tab-->
+                                           </div>
+                                           <!--SE TAB-->
+                                           <div id="tab-stateEstimator" role="tabpanel" class="tab-pane fade">
+                                               <button id ="simSE" form="seForm" class="btn btn-primary my-2">
+                                                   Run State Estimation<i id="seRunning" class="fas fa-check-circle"></i>
+                                               </button>
+
+                                               <div class="accordion" id="seAccordion">
+                                                   <div class="card">
+                                                       <div class="card-header" id="seOptionsCardHeading">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link" type="button"
+                                                               data-toggle="collapse" data-target="#collapseSEOptions"
+                                                               aria-expanded="true" aria-controls="collapseSEOptions">
+                                                                   State Estimation Options
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapseSEOptions" class="collapse"
+                                                       aria-labelledby="seOptionsCardHeading" data-parent="#seAccordion">
+                                                           <div class="card-body">
+                                                               <div id = "seFormBody" class="panel-body">
+                                                               @seForm(sForm, sePostUrl)
+                                                               </div>
+                                                           </div>
+                                                       </div>
+                                                   </div>
+                                                       <!-- Card 1-->
+                                                   <div class="card">
+                                                       <div class="card-header" id="seResultsCardHeading">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link" type="button"
+                                                               data-toggle="collapse" data-target="#collapseSEResults"
+                                                               aria-expanded="true" aria-controls="collapseSEResults">
+                                                                   State Estimator Results 1
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapseSEResults" class="collapse"
+                                                       aria-labelledby="seResultsCardHeading" data-parent="#seAccordion">
+                                                           <div id="seResults" class="card-body">
+                                                               <table class="resultTable table table-striped table-bordered"
+                                                               style="width:100%" id="seResultsTable"></table>
+                                                           </div>
+                                                       </div>
+                                                   </div> <!-- End of card 1-->
+                                                   <!--Card 2-->
+                                                   <div class="card">
+                                                       <div class="card-header" id="seResultsCardHeading2">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link" type="button"
+                                                               data-toggle="collapse" data-target="#collapseSEResults2"
+                                                               aria-expanded="true" aria-controls="collapseSEResults2">
+                                                                   State Estimation Results 2
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapseSEResults2" class="collapse"
+                                                       aria-labelledby="seResultsCardHeading2" data-parent="#seAccordion">
+                                                           <div id="seResults2" class="card-body">
+                                                               <table class="resultTable table table-striped table-bordered"
+                                                               style="width:100%" id="seResultsTable2"></table>
+                                                           </div>
+                                                           <a class="btn btn-success btn-small mx-2"
+                                                           href="@routes.HomeController.downloadSEReport()">
+                                                               Download SE Report</a>
+                                                       </div>
+                                                   </div> <!--End of card 2-->
+                                                   <!--Card 3-->
+                                                   <div id="badDataCard" class="card">
+                                                       <div class="card-header" id="seResultsCardHeading3">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link" type="button"
+                                                               data-toggle="collapse" data-target="#collapseSEResults3"
+                                                               aria-expanded="true" aria-controls="collapseSEResults3">
+                                                                   Bad Data
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapseSEResults3" class="collapse"
+                                                       aria-labelledby="seResultsCardHeading3" data-parent="#seAccordion">
+                                                           <div id="seResults3" class="card-body">
+                                                               <table class="resultTable table table-striped table-bordered"
+                                                               style="width:100%" id="seResultsTable3"></table>
+                                                           </div>
+                                                       </div>
+                                                   </div> <!--End of card 3-->
+                                                   <!--Card 4-->
+                                                   <div id="nnDetectorCard" class="card">
+                                                       <div class="card-header" id="nnDetectorCardHeading">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link" type="button"
+                                                               data-toggle="collapse" data-target="#collapsennDetector"
+                                                               aria-expanded="true" aria-controls="collapsennDetector">
+                                                                   Nearest Neighbor Detector
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapsennDetector" class="collapse"
+                                                       aria-labelledby="collapsennDetector" data-parent="#seAccordion">
+                                                           <div id="nnDetector" class="card-body">
+                                                               <div id="detectionResults"></div>
+                                                           </div>
+                                                       </div>
+                                                   </div> <!--End of card 4-->
+                                                   <!--Card 5-->
+                                                   <div id="seErrorCard" class="card">
+                                                       <div class="card-header" id="seErrorCardHeading">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link errorCard" type="button"
+                                                               data-toggle="collapse" data-target="#collapseSEError"
+                                                               aria-expanded="true" aria-controls="collapseSEError">
+                                                                   State Estimation Console
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapseSEError" class="collapse"
+                                                       aria-labelledby="seErrorCardHeading" data-parent="#seAccordion">
+                                                           <div id="seErrorMessage" class="card-body">
+
+                                                           </div>
+                                                       </div>
+                                                   </div> <!--End of card 5-->
+
+                                               </div> <!-- End of SE tab-->
+                                           </div>
+                                               <!--CA TAB -->
+                                           <div id="tab-contingencyAnalysis" role="tabpanel" class="tab-pane fade">
+                                               <button id ="simCA" form="caForm" class="btn btn-primary my-2">
+                                                   Run CA<i id="caRunning" class="fas fa-check-circle"></i></button>
+                                               <div class="accordion" id="caAccordion">
+                                                   <!--Card 1-->
+                                                   <div class="card">
+                                                       <div class="card-header" id="CapfOptionsCardHeading">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link" type="button"
+                                                               data-toggle="collapse" data-target="#collapseCapfOptions"
+                                                               aria-expanded="true" aria-controls="collapseCapfOptions">
+                                                                   Power Flow Options for Contingency Analysis
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapseCapfOptions" class="collapse"
+                                                       aria-labelledby="CapfOptionsCardHeading" data-parent="#caAccordion">
+                                                           <div class="card-body">
+                                                               <div id = "capfFormBody" class="panel-body">
+                                                               @pfForm(pForm, caPostUrl,"caForm")
+                                                               </div>
+                                                           </div>
+                                                       </div>
+                                                   </div> <!-- END of Card 1 -->
+                                                   <!-- Card 2-->
+                                                   <div class="card">
+                                                       <div class="card-header" id="caOptionsCardHeading">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link" type="button"
+                                                               data-toggle="collapse" data-target="#collapseCaOptions"
+                                                               aria-expanded="true" aria-controls="collapseCaOptions">
+                                                                   Contingency Analysis Options
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapseCaOptions" class="collapse"
+                                                       aria-labelledby="caOptionsCardHeading" data-parent="#caAccordion">
+                                                           <div id="caOptions" class="card-body">
+                                                               <div id = "caFormBody" class="panel-body">
+                                                               @caForm(cForm, caPostUrl)
+                                                               </div>
+                                                           </div>
+                                                       </div>
+                                                   </div> <!--End of card 2-->
+                                                   <!--Card 3-->
+                                                   <div id="caResults" class="card">
+                                                       <div class="card-header" id="caResultsCardHeading">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link" type="button"
+                                                               data-toggle="collapse" data-target="#collapseCaResults"
+                                                               aria-expanded="true" aria-controls="collapseCaResults">
+                                                                   Contingency Analysis Results
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapseCaResults" class="collapse"
+                                                       aria-labelledby="caResultsCardHeading" data-parent="#caAccordion">
+                                                           <div id="caResults" class="card-body">
+                                                               <table class="resultTable table table-striped table-bordered"
+                                                               id="caResultsTable"></table>
+                                                               <div class="row">
+                                                                   <a class="btn btn-success btn-small"
+                                                                   href="@routes.HomeController.downloadCAReport()">
+                                                                       Download CA Results</a>
+                                                                   <form id="contgyUpdateForm" class="form-inline mx-2">
+                                                                   <input id="updateContgy" class="btn btn-warning btn-small"
+                                                                    type="submit" value="Update contingencies "/></form>
+                                                                   <a class="btn btn-primary ml-2"
+                                                                   href="#" id="saveCA">Save CA results</a>
+                                                                   <a class="btn btn-info ml-2"
+                                                                   href="#" id="compareCA">Compare with saved results</a>
+                                                               </div>
+
+                                                           </div>
+                                                       </div>
+                                                   </div> <!--End of card 3-->
+                                                   <!--Card 4-->
+                                                   <div id="caErrorCard" class="card">
+                                                       <div class="card-header" id="caErrorCardHeading">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link errorCard" type="button"
+                                                               data-toggle="collapse" data-target="#collapseCaError"
+                                                               aria-expanded="true" aria-controls="collapseCaError">
+                                                                   Contingency Analysis Console
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapseCaError" class="collapse"
+                                                       aria-labelledby="caErrorCardHeading" data-parent="#caAccordion">
+                                                           <div id="caErrorMessage" class="card-body">
+
+                                                           </div>
+                                                       </div>
+                                                   </div>
+                                               </div>
+                                           </div>
+                                           <!--SCED TAB -->
+                                           <div id="tab-SCED" role="tabpanel" class="tab-pane fade">
+                                               <button id ="simSCED" class="btn btn-primary my-2" form="scedForm">
+                                                   Run SCED<i id="scedRunning" class="fas fa-check-circle"></i>
+                                               </button>
+                                               <div class="accordion" id="scedAccordion">
+                                                   <!-- Card 1-->
+                                                   <div class="card">
+                                                       <div class="card-header" id="scedOptionsCardHeading">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link" type="button"
+                                                               data-toggle="collapse" data-target="#collapseScedOptions"
+                                                               aria-expanded="true" aria-controls="collapseScedOptions">
+                                                                   SCED Options
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapseScedOptions" class="collapse"
+                                                       aria-labelledby="scedOptionsCardHeading" data-parent="#scedAccordion">
+                                                           <div class="card-body">
+                                                               <div id = "scedFormBody" class="panel-body">
+                                                               @scedForm(scForm, scedPostUrl)
+                                                               </div>
+                                                           </div>
+                                                       </div>
+                                                   </div> <!-- END OF CARD 1 -->
+                                                   <!-- Card 2-->
+                                                   <div class="card">
+                                                       <div class="card-header" id="scedResultsCardHeading">
+                                                           <h5 class="mb-0">
+                                                               <button class="btn btn-link" type="button"
+                                                               data-toggle="collapse" data-target="#collapseScedResults"
+                                                               aria-expanded="true" aria-controls="collapseScedResults">
+                                                                   SCED Results
+                                                               </button>
+                                                           </h5>
+                                                       </div>
+
+                                                       <div id="collapseScedResults" class="collapse"
+                                                       aria-labelledby="scedResultsCardHeading" data-parent="#scedAccordion">
+                                                           <div class="card-body">
+                                                               <table class="resultTable table table-striped table-bordered"
+                                                               style="width:100%" id="scedResultsTable"></table>
+                                                               <div id="scedErrors"></div>
+                                                               <a href="@routes.HomeController.downloadScedReport()"
+                                                               id="downloadSced" class="btn btn-primary ml-2">
+                                                               Download SCED Results</a>
+                                                           </div>
+                                                       </div>
+                                                   </div> <!-- END OF CARD 2 -->
+
+                                               </div>
+                                           </div> <!-- END OF SCED TAB -->
+                                       </div>
+                                   </div>
+                               </div>
+                           </div>
+                       </div>
+                   </div>
+               </div>
+           </div> <!-- End of simulation modal -->
+
+           <!-- Element info modal -->
+           <div class="modal fade" id="elemInfoModal" tabindex="-1" role="dialog" aria-labelledby="InfoModalLabel" aria-hidden="true">
+               <div class="modal-dialog modal-lg" role="document">
+                   <div class="modal-content">
+                       <div class="modal-header">
+                           <h4 class="modal-title" id="elementId"></h4>
+                           <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">×</span><span class="sr-only">Close</span></button>
+
+                       </div>
+                       <div class="modal-body modal-lg">
+                           <div class="row">
+                               <div class="col-lg-12">
+                                   <div class="panel panel-default">
+                                       <ul class="nav nav-tabs" role="tablist">
+                                           <li class="nav-item"><a href="#tab-pf" role="tab" data-toggle="tab" class="nav-link active">Power Flow</a></li>
+                                           <li class="nav-item"><a href="#tab-properties" role="tab" data-toggle="tab" class="nav-link">Properties</a></li>
+                                           <li class="nav-item"><a href="#tab-telemetry" role="tab" data-toggle="tab" class="nav-link">Telemetry</a></li>
+                                       </ul>
+                                       <div id="tabsJustifiedContent" class="tab-content">
+                                           <div id="tab-pf" role="tabpanel" class="tab-pane active"></div>
+                                           <div id="tab-properties" role="tabpanel" class="tab-pane fade"></div>
+                                           <div id="tab-telemetry" role="tabpanel" class="tab-pane fade"></div>
+                                       </div>
+                                   </div>
+                               </div>
+                           </div>
+                       </div>
+                   </div>
+               </div>
+           </div> <!-- End of element info modal -->
+
+           <div id="cy-container">
+               <div id="cy"></div>
+           </div>
+           <label for="layoutSelector">Layout</label>
+           <select id="layoutSelector">
+               <option value="preset">Preset</option>
+               <option value="cose">Cose</option>
+               <option value="cose-bilkent">Cose-Bilkent</option>
+           </select>
+           <button type="button" id="positionSubmit">Save Positions</button>
+           <span id="positionSavingMessage"></span>
+           <div>
+               <label for="nodeSizeSelector">Criteria for node size:</label>
+               <select id="nodeSizeSelector">
+                   <option value="pg">Active Gen</option>
+                   <option value="pd">Active Load</option>
+                   <option value="pgdiff">Dispatch diff (after SCED)</option>
+                   <option value="none" selected>Default</option>
+               </select>
+               <label for="branchGradientSelector">Criteria for branch color:</label>
+               <select id="branchGradientSelector">
+                   <option value="flow_MVA">Flow</option>
+                   <option value="LT_Rating">LT Rating</option>
+                   <option value="R">Resistance</option>
+                   <option value="X">Reactance</option>
+                   <option value="none" selected>Default</option>
+               </select>
+
+               <input type="checkbox" id="opacity-check" name="Opacity"
+               value="true" checked />
+               <label for="opacity-check">Opacity</label>
+
+               <input type="checkbox" id="size-check" name="Size"
+               value="true" checked />
+               <label for="size-check">Size</label>
+               <i id="graphReady" class="fas fa-check-circle"></i>
+           </div>
+       </div>
+    </div>
+}
